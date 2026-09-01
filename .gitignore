@@ -1,0 +1,10 @@
+# Virtual Environment
+venv/
+
+# Large Vector Models
+*.vec
+
+# Python Cache & OS Junk
+__pycache__/
+*.pyc
+.DS_Store
