@@ -42,33 +42,41 @@ class SemantleSolver:
         print(f"\n[HOTSPOT FOUND] Top anchor: '{self.best_word}' with score {self.best_score:.2f}%\n")
         return True
 
-    def run_phase_2(self, max_attempts=60):
-        print("=== PHASE 2: Dynamic Focused Exploitation (Targeting 80%+) ===")
+    def run_phase_2(self, max_attempts=80):
+        print("=== PHASE 2: Dynamic Focused Exploitation (Targeting 100%) ===")
         attempt = 1
 
         while attempt <= max_attempts and self.best_score < 100.0:
-            scores_arr = np.array(self.valid_scores, dtype=np.float32)
             
-            # הקשחת משקולות ככל שהציון עולה
-            temp = 6.0 if self.best_score >= 60.0 else 9.0
-            weights = np.exp(scores_arr / temp)
-            weights /= np.sum(weights)
+            # תרחיש א': ציון 80%+ - טיפוס הרים מקומי צמוד (ללא דחייה וללא בריחה)
+            if self.best_score >= 80.0:
+                best_idx = self.valid_indices[np.argmax(self.valid_scores)]
+                best_vec = self.word_vectors[best_idx]
+                scores = np.dot(self.word_vectors, best_vec)
 
-            anchor_vecs = self.word_vectors[self.valid_indices]
-            v_target_est = np.dot(weights, anchor_vecs)
-            norm = np.linalg.norm(v_target_est)
-            if norm > 0:
-                v_target_est /= norm
+            # תרחיש ב': ציון מתחת ל-80% - חיפוש מבוסס משיכה ודחייה
+            else:
+                scores_arr = np.array(self.valid_scores, dtype=np.float32)
+                temp = 5.0 if self.best_score >= 60.0 else 9.0
+                weights = np.exp(scores_arr / temp)
+                weights /= np.sum(weights)
 
-            scores = np.dot(self.word_vectors, v_target_est)
+                anchor_vecs = self.word_vectors[self.valid_indices]
+                v_target_est = np.dot(weights, anchor_vecs)
+                norm = np.linalg.norm(v_target_est)
+                if norm > 0:
+                    v_target_est /= norm
 
-            # הפעלת מנגנון דחייה מאזורים כושלים
-            if self.bad_indices:
-                bad_vecs = self.word_vectors[self.bad_indices]
-                repulsion_scores = np.max(np.dot(self.word_vectors, bad_vecs.T), axis=1)
-                penalty_weight = 0.5 + (self.stagnant_count * 0.2)
-                scores -= penalty_weight * np.maximum(0, repulsion_scores - 0.35)
+                scores = np.dot(self.word_vectors, v_target_est)
 
+                # הפעלת קנס דחייה אך ורק על אזורים נמוכים
+                if self.bad_indices:
+                    bad_vecs = self.word_vectors[self.bad_indices]
+                    repulsion_scores = np.max(np.dot(self.word_vectors, bad_vecs.T), axis=1)
+                    penalty_weight = 0.4 + (self.stagnant_count * 0.1)
+                    scores -= penalty_weight * np.maximum(0, repulsion_scores - 0.35)
+
+            # איפוס מילים שנבדקו
             for idx in self.checked_indices:
                 scores[idx] = -np.inf
 
@@ -109,7 +117,8 @@ class SemantleSolver:
                 print(f"Attempt {attempt:02d} | Candidate: '{candidate:<12}' | API Score: {sim:.2f} [NEW BEST! +{diff:.2f}]")
             else:
                 self.stagnant_count += 1
-                if sim < (self.best_score - 10.0):
+                # הוספה ל-bad_indices אך ורק אם הציון נמוך מ-50.0%
+                if sim < 50.0:
                     self.bad_indices.append(best_candidate_idx)
                 print(f"Attempt {attempt:02d} | Candidate: '{candidate:<12}' | API Score: {sim:.2f}")
 
