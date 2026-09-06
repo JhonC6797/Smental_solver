@@ -1,7 +1,7 @@
 import os
 
 MODEL_PATH = "wiki.he.vec"
-VOCAB_LIMIT = 80000
+VOCAB_LIMIT = 22000  # מיקוד ב-22,000 המילים השכיחות ביותר בעברית בלבד
 API_URL = "https://semantle.ishefi.com/api/distance"
 
 INITIAL_ANCHORS = [

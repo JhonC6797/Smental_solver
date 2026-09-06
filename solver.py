@@ -1,6 +1,6 @@
 import numpy as np
 from config import INITIAL_ANCHORS
-from utils import is_too_similar_fast
+from utils import is_too_similar_fast, plot_solver_history
 
 class SemantleSolver:
     def __init__(self, words, word_vectors, api):
@@ -14,10 +14,15 @@ class SemantleSolver:
         self.valid_scores = []
         self.bad_indices = []
         self.tested_words_set = set()
+        self.history = []
         
         self.best_score = -1.0
         self.best_word = None
         self.stagnant_count = 0
+
+        # קנס שכיחות הדרגתי: מילים נדירות יותר במאגר מקבלות קנס קל
+        n_words = len(words)
+        self.freq_bias = np.linspace(0.0, -0.05, n_words, dtype=np.float32)
 
     def run_phase_1(self):
         print("=== PHASE 1: Sampling Initial Anchors ===")
@@ -42,22 +47,20 @@ class SemantleSolver:
         print(f"\n[HOTSPOT FOUND] Top anchor: '{self.best_word}' with score {self.best_score:.2f}%\n")
         return True
 
-    def run_phase_2(self, max_attempts=80):
+    def run_phase_2(self, max_attempts=60):
         print("=== PHASE 2: Dynamic Focused Exploitation (Targeting 100%) ===")
         attempt = 1
 
         while attempt <= max_attempts and self.best_score < 100.0:
             
-            # תרחיש א': ציון 80%+ - טיפוס הרים מקומי צמוד (ללא דחייה וללא בריחה)
-            if self.best_score >= 80.0:
+            # חיפוש ממוקד מול המילה הטובה ביותר אם חצינו 65%
+            if self.best_score >= 65.0:
                 best_idx = self.valid_indices[np.argmax(self.valid_scores)]
                 best_vec = self.word_vectors[best_idx]
                 scores = np.dot(self.word_vectors, best_vec)
-
-            # תרחיש ב': ציון מתחת ל-80% - חיפוש מבוסס משיכה ודחייה
             else:
                 scores_arr = np.array(self.valid_scores, dtype=np.float32)
-                temp = 5.0 if self.best_score >= 60.0 else 9.0
+                temp = 4.0 if self.best_score >= 50.0 else 8.0
                 weights = np.exp(scores_arr / temp)
                 weights /= np.sum(weights)
 
@@ -69,12 +72,14 @@ class SemantleSolver:
 
                 scores = np.dot(self.word_vectors, v_target_est)
 
-                # הפעלת קנס דחייה אך ורק על אזורים נמוכים
                 if self.bad_indices:
                     bad_vecs = self.word_vectors[self.bad_indices]
                     repulsion_scores = np.max(np.dot(self.word_vectors, bad_vecs.T), axis=1)
                     penalty_weight = 0.4 + (self.stagnant_count * 0.1)
-                    scores -= penalty_weight * np.maximum(0, repulsion_scores - 0.35)
+                    scores -= penalty_weight * np.maximum(0, repulsion_scores - 0.3)
+
+            # הוספת תיעדוף מילים שכיחות
+            scores += self.freq_bias
 
             # איפוס מילים שנבדקו
             for idx in self.checked_indices:
@@ -109,20 +114,31 @@ class SemantleSolver:
                 self.valid_indices.append(best_candidate_idx)
                 self.valid_scores.append(sim)
 
+            is_new_best = False
             if sim > self.best_score:
                 diff = sim - self.best_score
                 self.best_score = sim
                 self.best_word = candidate
                 self.stagnant_count = 0
+                is_new_best = True
                 print(f"Attempt {attempt:02d} | Candidate: '{candidate:<12}' | API Score: {sim:.2f} [NEW BEST! +{diff:.2f}]")
             else:
                 self.stagnant_count += 1
-                # הוספה ל-bad_indices אך ורק אם הציון נמוך מ-50.0%
-                if sim < 50.0:
+                if sim < 45.0:
                     self.bad_indices.append(best_candidate_idx)
                 print(f"Attempt {attempt:02d} | Candidate: '{candidate:<12}' | API Score: {sim:.2f}")
+
+            self.history.append({
+                'attempt': attempt,
+                'word': candidate,
+                'score': sim,
+                'best_score': self.best_score,
+                'is_new_best': is_new_best
+            })
 
             attempt += 1
 
         if self.best_score >= 100.0:
             print(f"\n[WINNER FOUND] The hidden daily word is: '{self.best_word}'!")
+
+        plot_solver_history(self.history)

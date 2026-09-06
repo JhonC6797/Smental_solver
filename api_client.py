@@ -11,7 +11,7 @@ class SemantleAPI:
 
     def get_similarity(self, word: str) -> float:
         params = {'word': word}
-        time.sleep(0.35)
+        time.sleep(0.5)  # מונע חסימות 429 וזמני המתנה מיותרים
         
         try:
             response = self.session.get(API_URL, params=params, timeout=5)
@@ -21,8 +21,8 @@ class SemantleAPI:
                     sim = data[0].get('similarity')
                     return float(sim) if sim is not None else None
             elif response.status_code == 429:
-                print("[RATE LIMIT] Waiting 5 seconds...")
-                time.sleep(5)
+                print("[RATE LIMIT] Waiting 4 seconds...")
+                time.sleep(4)
                 return self.get_similarity(word)
             return None
         except Exception:
