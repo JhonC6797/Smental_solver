@@ -64,6 +64,10 @@ class BoardProjection:
             radius=float(radius),
         )
 
+    def direction_of(self, vector: np.ndarray) -> np.ndarray:
+        """The unit direction a raw vector points to on the board."""
+        return self._direction(vector)
+
     def _direction(self, vector: np.ndarray) -> np.ndarray:
         projected = (vector - self.mean_vector) @ self._basis
         length = np.linalg.norm(projected)
