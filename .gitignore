@@ -11,3 +11,7 @@ __pycache__/
 
 # Model files and built artifacts
 data/
+
+# Frontend build output and deps
+web/node_modules/
+web/dist/
