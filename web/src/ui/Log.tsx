@@ -6,8 +6,12 @@
  * mark colours, and it is the only place the exact numbers are written
  * down, which keeps them off the board itself.
  *
- * On a wide screen it is a fixed column beside the board. On a narrow one it
- * would cover half the board, so it becomes a panel that opens over it.
+ * Pointing at a row lights the matching point on the board, and the filter
+ * here governs the board too — "records only" is a way of reading the
+ * search, not a way of reading this list.
+ *
+ * On a wide screen it is a column beside the board; on a narrow one it
+ * would cover half of it, so it opens over the board instead.
  */
 
 import { useEffect, useRef } from "react";
@@ -18,12 +22,18 @@ import { COLOR } from "../board/theme";
 export function Log({
   guesses,
   narrow,
-  open,
+  recordsOnly,
+  highlighted,
+  onFilter,
+  onHighlight,
   onClose,
 }: {
   guesses: Guess[];
   narrow: boolean;
-  open: boolean;
+  recordsOnly: boolean;
+  highlighted: number | null;
+  onFilter: (recordsOnly: boolean) => void;
+  onHighlight: (guessNumber: number | null) => void;
   onClose: () => void;
 }) {
   const scroller = useRef<HTMLOListElement>(null);
@@ -35,8 +45,7 @@ export function Log({
     });
   }, [guesses.length]);
 
-  if (guesses.length === 0) return null;
-  if (narrow && !open) return null;
+  const rows = recordsOnly ? guesses.filter((g) => g.is_best_so_far) : guesses;
 
   return (
     <aside
@@ -46,21 +55,21 @@ export function Log({
         insetInlineEnd: 0,
         top: 0,
         bottom: 68,
-        zIndex: 20,
-        width: narrow ? "100%" : 208,
+        zIndex: 28,
+        width: narrow ? "100%" : 224,
         display: "flex",
         flexDirection: "column",
         borderInlineStart: `1px solid ${COLOR.rule}`,
-        background: narrow ? COLOR.field : `${COLOR.field}d0`,
+        background: narrow ? COLOR.field : `${COLOR.field}d8`,
         backdropFilter: "blur(3px)",
       }}
     >
       <header
         style={{
           display: "flex",
-          alignItems: "baseline",
+          alignItems: "center",
           justifyContent: "space-between",
-          padding: "14px 16px 8px",
+          padding: "12px 12px 8px 8px",
         }}
       >
         <h2
@@ -74,74 +83,138 @@ export function Log({
         >
           יומן ניחושים
         </h2>
-        {narrow && (
-          <button
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: COLOR.inkSoft,
-              fontSize: 14,
-              cursor: "pointer",
-              padding: 4,
-            }}
-          >
-            סגור
-          </button>
-        )}
+        <button
+          onClick={onClose}
+          aria-label="סגור את היומן"
+          style={{
+            border: "none",
+            background: "transparent",
+            color: COLOR.inkSoft,
+            fontSize: 13,
+            cursor: "pointer",
+            padding: 4,
+          }}
+        >
+          סגור
+        </button>
       </header>
 
-      <ol
-        ref={scroller}
-        style={{
-          margin: 0,
-          padding: "0 8px 12px",
-          listStyle: "none",
-          overflowY: "auto",
-          flex: 1,
-        }}
-      >
-        {guesses.map((guess) => (
-          <li
-            key={guess.guess_number}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "22px 1fr auto",
-              alignItems: "baseline",
-              gap: 8,
-              padding: "4px 8px",
-              borderRadius: 2,
-              background: guess.is_best_so_far ? `${COLOR.record}1a` : "transparent",
-            }}
-          >
-            <span
-              className="figure"
-              style={{ fontSize: 11, color: COLOR.inkFaint, textAlign: "start" }}
-            >
-              {guess.guess_number}
-            </span>
-            <span
+      <div style={{ display: "flex", gap: 6, padding: "0 12px 10px" }}>
+        <Choice active={!recordsOnly} onClick={() => onFilter(false)}>
+          הכל {guesses.length}
+        </Choice>
+        <Choice active={recordsOnly} onClick={() => onFilter(true)}>
+          שיאים {guesses.filter((g) => g.is_best_so_far).length}
+        </Choice>
+      </div>
+
+      {rows.length === 0 ? (
+        <p
+          style={{
+            margin: 0,
+            padding: "8px 16px",
+            fontSize: 13,
+            color: COLOR.inkFaint,
+          }}
+        >
+          {guesses.length === 0
+            ? "הריצה עוד לא התחילה."
+            : "עוד לא נרשם שיא בריצה הזו."}
+        </p>
+      ) : (
+        <ol
+          ref={scroller}
+          style={{
+            margin: 0,
+            padding: "0 8px 12px",
+            listStyle: "none",
+            overflowY: "auto",
+            flex: 1,
+          }}
+        >
+          {rows.map((guess) => (
+            <li
+              key={guess.guess_number}
+              onMouseEnter={() => onHighlight(guess.guess_number)}
+              onMouseLeave={() => onHighlight(null)}
               style={{
-                fontFamily: "'Frank Ruhl Libre', Georgia, serif",
-                fontSize: 16,
-                fontWeight: guess.is_best_so_far ? 700 : 400,
-                color: guess.is_best_so_far ? COLOR.record : COLOR.ink,
+                display: "grid",
+                gridTemplateColumns: "22px 1fr auto",
+                alignItems: "baseline",
+                gap: 8,
+                padding: "4px 8px",
+                borderRadius: 2,
+                cursor: "default",
+                outline:
+                  guess.guess_number === highlighted
+                    ? `1px solid ${COLOR.inkFaint}`
+                    : "none",
+                background: guess.is_best_so_far
+                  ? `${COLOR.record}1a`
+                  : guess.guess_number === highlighted
+                    ? `${COLOR.observation}1a`
+                    : "transparent",
               }}
             >
-              {guess.word}
-            </span>
-            <span
-              className="figure"
-              style={{
-                fontSize: 13,
-                color: guess.is_best_so_far ? COLOR.record : COLOR.inkSoft,
-              }}
-            >
-              {guess.similarity.toFixed(2)}
-            </span>
-          </li>
-        ))}
-      </ol>
+              <span
+                className="figure"
+                style={{ fontSize: 11, color: COLOR.inkFaint, textAlign: "start" }}
+              >
+                {guess.guess_number}
+              </span>
+              <span
+                style={{
+                  fontFamily: "'Frank Ruhl Libre', Georgia, serif",
+                  fontSize: 16,
+                  fontWeight: guess.is_best_so_far ? 700 : 400,
+                  color: guess.is_best_so_far ? COLOR.record : COLOR.ink,
+                }}
+              >
+                {guess.word}
+              </span>
+              <span
+                className="figure"
+                style={{
+                  fontSize: 13,
+                  color: guess.is_best_so_far ? COLOR.record : COLOR.inkSoft,
+                }}
+              >
+                {guess.similarity.toFixed(2)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
     </aside>
+  );
+}
+
+function Choice({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        flex: 1,
+        padding: "5px 8px",
+        fontSize: 12,
+        fontWeight: active ? 600 : 400,
+        borderRadius: 2,
+        border: `1px solid ${active ? COLOR.record : COLOR.rule}`,
+        background: active ? `${COLOR.record}1f` : "transparent",
+        color: active ? COLOR.record : COLOR.inkSoft,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
   );
 }

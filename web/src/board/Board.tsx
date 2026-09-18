@@ -23,10 +23,16 @@ export function Board({
   guesses,
   answer,
   hypothesis,
+  recordsOnly,
+  highlighted,
+  onHighlight,
 }: {
   guesses: Guess[];
   answer: string | null;
   hypothesis: [number, number, number] | null;
+  recordsOnly: boolean;
+  highlighted: number | null;
+  onHighlight: (guessNumber: number | null) => void;
 }) {
   return (
     <Canvas
@@ -39,7 +45,13 @@ export function Board({
       <FitToViewport />
       <Shells />
       <Hypothesis direction={hypothesis} />
-      <Guesses guesses={guesses} answer={answer} />
+      <Guesses
+        guesses={guesses}
+        answer={answer}
+        recordsOnly={recordsOnly}
+        highlighted={highlighted}
+        onHighlight={onHighlight}
+      />
       <Centre answer={answer} />
 
       <OrbitControls

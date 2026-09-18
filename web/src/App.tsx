@@ -1,11 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Board } from "./board/Board";
 import { COLOR } from "./board/theme";
 import { Log } from "./ui/Log";
+import { ProgressChart } from "./ui/ProgressChart";
 import { Rail } from "./ui/Rail";
 import { useNarrow } from "./ui/useNarrow";
-import { startSolve, type Guess, type Message } from "./api";
+import {
+  CLOSED,
+  hasSession,
+  rejoinSolve,
+  startSolve,
+  type Connection,
+  type Guess,
+  type Message,
+} from "./api";
+
+/** Fast enough to watch the shape of the search, slow enough to follow. */
+const REPLAY_STEP_MS = 170;
+const LOG_WIDTH = 224;
+const RAIL_HEIGHT = 68;
 
 export default function App() {
   const [guesses, setGuesses] = useState<Guess[]>([]);
@@ -17,19 +31,23 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [logOpen, setLogOpen] = useState(false);
+  const [chartOpen, setChartOpen] = useState(false);
+  const [recordsOnly, setRecordsOnly] = useState(false);
+  const [highlighted, setHighlighted] = useState<number | null>(null);
+  const [replayIndex, setReplayIndex] = useState<number | null>(null);
+
   const startedAt = useRef<number | null>(null);
+  const connection = useRef<Connection>(CLOSED);
   const narrow = useNarrow();
+  const replaying = replayIndex !== null;
 
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => {
-      if (startedAt.current) setElapsed((Date.now() - startedAt.current) / 1000);
-    }, 200);
-    return () => clearInterval(timer);
-  }, [running]);
-
-  function handle(message: Message) {
+  const handle = useCallback((message: Message) => {
     switch (message.type) {
+      case "run_started":
+        // Taken from the server, so a rejoined run shows its real age.
+        startedAt.current = Date.parse(message.started_at);
+        setRunning(true);
+        break;
       case "guess":
         setGuesses((previous) => [...previous, message]);
         break;
@@ -42,7 +60,9 @@ export default function App() {
       }
       case "solved":
         setAnswer(message.word);
+        setHypothesis(null); // the guess about where to look is spent
         setNote(`נמצא ב־${message.total_guesses} ניחושים`);
+        setElapsed(message.elapsed_seconds);
         setRunning(false);
         break;
       case "failed":
@@ -50,26 +70,75 @@ export default function App() {
         setRunning(false);
         break;
     }
-  }
+  }, []);
+
+  const lose = useCallback((reason: string) => {
+    setNote(reason);
+    setRunning(false);
+  }, []);
+
+  // Rejoin the run this tab was watching before it reloaded. The server
+  // replays what was missed, so nothing is lost.
+  useEffect(() => {
+    if (!hasSession()) return;
+    const rejoined = rejoinSolve({ onMessage: handle, onLost: lose });
+    if (rejoined) connection.current = rejoined;
+    return () => {
+      connection.current.close();
+      connection.current = CLOSED;
+    };
+  }, [handle, lose]);
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => {
+      if (startedAt.current) setElapsed((Date.now() - startedAt.current) / 1000);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [running]);
+
+  useEffect(() => {
+    if (replayIndex === null) return;
+    if (replayIndex >= guesses.length) {
+      setReplayIndex(null);
+      return;
+    }
+    const timer = setTimeout(() => setReplayIndex(replayIndex + 1), REPLAY_STEP_MS);
+    return () => clearTimeout(timer);
+  }, [replayIndex, guesses.length]);
 
   async function solve() {
+    connection.current.close();
+    connection.current = CLOSED;
     setGuesses([]);
     setAnswer(null);
     setHypothesis(null);
     setNote(null);
     setElapsed(0);
-    setLogOpen(false);
+    setReplayIndex(null);
+    setHighlighted(null);
     startedAt.current = Date.now();
     setRunning(true);
     try {
-      await startSolve(handle);
+      connection.current = await startSolve({ onMessage: handle, onLost: lose });
     } catch {
-      setNote("השרת לא זמין. הפעילו אותו עם python -m uvicorn server.app:app");
+      setNote("אין קשר לשרת. הפעילו אותו עם python -m uvicorn server.app:app");
       setRunning(false);
     }
   }
 
-  const best = guesses.reduce<Guess | null>(
+  function replay() {
+    setRecordsOnly(false);
+    setHighlighted(null);
+    setReplayIndex(0);
+  }
+
+  // During a replay the board is rewound: it holds only the guesses made so
+  // far, and the answer stays hidden until the last one lands.
+  const visible = replaying ? guesses.slice(0, replayIndex) : guesses;
+  const visibleAnswer = replaying ? null : answer;
+
+  const best = visible.reduce<Guess | null>(
     (top, guess) => (top === null || guess.similarity > top.similarity ? guess : top),
     null,
   );
@@ -87,28 +156,69 @@ export default function App() {
         overflow: "hidden",
       }}
     >
-      <Board guesses={guesses} answer={answer} hypothesis={hypothesis} />
+      <Board
+        guesses={visible}
+        answer={visibleAnswer}
+        hypothesis={hypothesis}
+        recordsOnly={recordsOnly}
+        highlighted={highlighted}
+        onHighlight={setHighlighted}
+      />
 
       {guesses.length === 0 && !running && <Opening />}
 
-      <Log
-        guesses={guesses}
-        narrow={narrow}
-        open={logOpen}
-        onClose={() => setLogOpen(false)}
-      />
+      {logOpen && guesses.length > 0 && (
+        <Log
+          guesses={visible}
+          narrow={narrow}
+          recordsOnly={recordsOnly}
+          highlighted={highlighted}
+          onFilter={setRecordsOnly}
+          onHighlight={setHighlighted}
+          onClose={() => setLogOpen(false)}
+        />
+      )}
+
+      {chartOpen && guesses.length > 0 && (
+        <section
+          dir="rtl"
+          aria-label="גרף ההתקדמות"
+          style={{
+            position: "absolute",
+            left: logOpen && !narrow ? LOG_WIDTH : 0,
+            right: 0,
+            bottom: RAIL_HEIGHT,
+            zIndex: 25,
+            borderTop: `1px solid ${COLOR.rule}`,
+            background: `${COLOR.field}f2`,
+            backdropFilter: "blur(3px)",
+            padding: "4px 16px 0",
+          }}
+        >
+          <ProgressChart
+            guesses={visible}
+            highlighted={highlighted}
+            onHighlight={setHighlighted}
+          />
+        </section>
+      )}
 
       <Rail
         running={running}
-        solved={answer !== null}
+        replaying={replaying}
+        solved={answer !== null && !replaying}
         best={best?.word ?? null}
         bestScore={best?.similarity ?? 0}
-        count={guesses.length}
+        count={visible.length}
         elapsed={elapsed}
-        note={note}
+        note={replaying ? null : note}
         narrow={narrow}
-        hasLog={guesses.length > 0}
-        onOpenLog={() => setLogOpen(true)}
+        logOpen={logOpen}
+        chartOpen={chartOpen}
+        canReplay={!running && guesses.length > 1}
+        onToggleLog={() => setLogOpen((open) => !open)}
+        onToggleChart={() => setChartOpen((open) => !open)}
+        onReplay={replay}
         onSolve={solve}
       />
     </main>

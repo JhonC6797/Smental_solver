@@ -4,12 +4,15 @@
  * The board is the thing worth looking at, so the readouts live in the
  * margin the way annotations sit at the edge of a chart — a single rule and
  * a row of values, not a deck of cards competing with the visualization.
+ * The primary action sits at the start of the row; the views you can turn
+ * on and off sit at the far end, out of the way until wanted.
  */
 
 import { COLOR } from "../board/theme";
 
 export function Rail({
   running,
+  replaying,
   solved,
   best,
   bestScore,
@@ -17,11 +20,16 @@ export function Rail({
   elapsed,
   note,
   narrow,
-  hasLog,
-  onOpenLog,
+  logOpen,
+  chartOpen,
+  canReplay,
+  onToggleLog,
+  onToggleChart,
+  onReplay,
   onSolve,
 }: {
   running: boolean;
+  replaying: boolean;
   solved: boolean;
   best: string | null;
   bestScore: number;
@@ -29,10 +37,16 @@ export function Rail({
   elapsed: number;
   note: string | null;
   narrow: boolean;
-  hasLog: boolean;
-  onOpenLog: () => void;
+  logOpen: boolean;
+  chartOpen: boolean;
+  canReplay: boolean;
+  onToggleLog: () => void;
+  onToggleChart: () => void;
+  onReplay: () => void;
   onSolve: () => void;
 }) {
+  const busy = running || replaying;
+
   return (
     <div
       dir="rtl"
@@ -40,43 +54,51 @@ export function Rail({
         position: "absolute",
         insetInline: 0,
         bottom: 0,
-        zIndex: 10,
+        zIndex: 30,
         display: "flex",
         alignItems: "center",
-        gap: narrow ? 16 : 32,
-        padding: narrow ? "0 14px" : "0 24px",
+        gap: narrow ? 12 : 26,
+        padding: narrow ? "0 12px" : "0 20px",
         height: 68,
         borderTop: `1px solid ${COLOR.rule}`,
-        background: `linear-gradient(to top, ${COLOR.field} 55%, transparent)`,
+        background: `linear-gradient(to top, ${COLOR.field} 55%, ${COLOR.field}e0)`,
       }}
     >
       <button
         onClick={onSolve}
-        disabled={running}
+        disabled={busy}
         style={{
           fontFamily: "Assistant, system-ui, sans-serif",
           fontSize: 15,
           fontWeight: 600,
           padding: narrow ? "9px 14px" : "9px 20px",
-          whiteSpace: "nowrap",
           borderRadius: 2,
-          border: `1px solid ${running ? COLOR.rule : COLOR.record}`,
+          whiteSpace: "nowrap",
+          border: `1px solid ${busy ? COLOR.rule : COLOR.record}`,
           background: "transparent",
-          color: running ? COLOR.inkFaint : COLOR.record,
-          cursor: running ? "default" : "pointer",
+          color: busy ? COLOR.inkFaint : COLOR.record,
+          cursor: busy ? "default" : "pointer",
           transition: "background 160ms, color 160ms",
         }}
         onMouseEnter={(event) => {
-          if (running) return;
+          if (busy) return;
           event.currentTarget.style.background = COLOR.record;
           event.currentTarget.style.color = COLOR.field;
         }}
         onMouseLeave={(event) => {
           event.currentTarget.style.background = "transparent";
-          event.currentTarget.style.color = COLOR.record;
+          event.currentTarget.style.color = busy ? COLOR.inkFaint : COLOR.record;
         }}
       >
-        {running ? "מחפש" : solved ? "חפש שוב" : narrow ? "מצא את המילה" : "מצא את המילה של היום"}
+        {running
+          ? "מחפש"
+          : replaying
+            ? "מריץ שוב"
+            : solved
+              ? "חפש שוב"
+              : narrow
+                ? "מצא את המילה"
+                : "מצא את המילה של היום"}
       </button>
 
       {best && (
@@ -116,36 +138,36 @@ export function Rail({
 
       {!narrow && best && !solved && <Progress score={bestScore} />}
 
-      {narrow && hasLog && (
-        <button
-          onClick={onOpenLog}
-          style={{
-            marginInlineStart: "auto",
-            border: `1px solid ${COLOR.rule}`,
-            background: "transparent",
-            color: COLOR.inkSoft,
-            fontSize: 13,
-            padding: "6px 12px",
-            borderRadius: 2,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          יומן
-        </button>
-      )}
-
       {note && !narrow && (
-        <span
-          style={{
-            marginInlineStart: "auto",
-            fontSize: 14,
-            color: solved ? COLOR.record : COLOR.inkSoft,
-          }}
-        >
+        <span style={{ fontSize: 14, color: solved ? COLOR.record : COLOR.inkSoft }}>
           {note}
         </span>
       )}
+
+      <div
+        style={{
+          marginInlineStart: "auto",
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+        }}
+      >
+        {canReplay && (
+          <Toggle active={false} disabled={busy} onClick={onReplay}>
+            הרצה חוזרת
+          </Toggle>
+        )}
+        {count > 0 && (
+          <Toggle active={chartOpen} onClick={onToggleChart}>
+            גרף
+          </Toggle>
+        )}
+        {count > 0 && (
+          <Toggle active={logOpen} onClick={onToggleLog}>
+            יומן
+          </Toggle>
+        )}
+      </div>
     </div>
   );
 }
@@ -167,12 +189,44 @@ function Readout({
   );
 }
 
+function Toggle({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      style={{
+        border: `1px solid ${active ? COLOR.inkSoft : COLOR.rule}`,
+        background: active ? `${COLOR.inkSoft}1a` : "transparent",
+        color: disabled ? COLOR.inkFaint : active ? COLOR.ink : COLOR.inkSoft,
+        fontSize: 13,
+        padding: "6px 12px",
+        borderRadius: 2,
+        cursor: disabled ? "default" : "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** How far the best guess has come, measured from the no-relation baseline. */
 function Progress({ score }: { score: number }) {
   const start = 25;
   const share = Math.max(0, Math.min(1, (score - start) / (100 - start)));
   return (
-    <div style={{ flex: "0 1 200px", minWidth: 90 }}>
+    <div style={{ flex: "0 1 180px", minWidth: 80 }}>
       <div style={{ height: 3, background: COLOR.rule, borderRadius: 2 }}>
         <div
           style={{

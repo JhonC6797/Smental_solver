@@ -1,3 +1,5 @@
+import asyncio
+
 import numpy as np
 import pytest
 
@@ -68,3 +70,18 @@ async def test_the_session_reports_when_it_is_finished(vocabulary):
 
 def test_each_session_gets_its_own_id(vocabulary):
     assert _session(vocabulary).session_id != _session(vocabulary).session_id
+
+
+async def test_two_readers_each_receive_the_whole_run(vocabulary):
+    """A reload leaves the old connection briefly alive, so two streams can
+    overlap. Neither may take a message the other needed."""
+    session = _session(vocabulary)
+    session.start()
+    first, second = await asyncio.gather(
+        _drain(session.stream()), _drain(session.stream())
+    )
+    assert first == second == session.history
+
+
+async def _drain(stream):
+    return [message async for message in stream]

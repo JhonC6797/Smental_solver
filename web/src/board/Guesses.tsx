@@ -9,7 +9,11 @@
  *
  * Two paths are drawn. The faint one follows every guess in order and shows
  * the search wandering; the gold one links only the records and shows the
- * progress that survived.
+ * progress that survived. With the board filtered to records the faint one
+ * would only retrace the gold one, so it is dropped.
+ *
+ * Which guess is highlighted is owned by the page, not by this component,
+ * because the log and the chart point at the same guesses.
  */
 
 import { useMemo, useRef, useState } from "react";
@@ -45,19 +49,39 @@ const vectorOf = (guess: Guess) =>
 export function Guesses({
   guesses,
   answer,
+  recordsOnly,
+  highlighted,
+  onHighlight,
 }: {
   guesses: Guess[];
   answer: string | null;
+  recordsOnly: boolean;
+  highlighted: number | null;
+  onHighlight: (guessNumber: number | null) => void;
 }) {
   const dots = useRef<(THREE.Mesh | null)[]>([]);
   const born = useRef<Map<number, number>>(new Map());
   const lastDeclutter = useRef(0);
   const [labelled, setLabelled] = useState<number[]>([]);
-  const [hovered, setHovered] = useState<number | null>(null);
   const { camera, size } = useThree();
   const metrics = size.width < COMPACT_WIDTH ? COMPACT : SPACIOUS;
 
-  const points = useMemo(() => guesses.map(vectorOf), [guesses]);
+  const shown = useMemo(
+    () =>
+      guesses.filter(
+        (guess) =>
+          (!recordsOnly || guess.is_best_so_far) &&
+          !(answer !== null && guess.word === answer),
+      ),
+    [guesses, recordsOnly, answer],
+  );
+
+  const points = useMemo(() => shown.map(vectorOf), [shown]);
+
+  const trail = useMemo(
+    () => (recordsOnly || guesses.length < 2 ? null : guesses.map(vectorOf)),
+    [guesses, recordsOnly],
+  );
 
   const recordPath = useMemo(() => {
     const records = guesses.filter((guess) => guess.is_best_so_far).map(vectorOf);
@@ -68,7 +92,7 @@ export function Guesses({
     const now = clock.getElapsedTime() * 1000;
 
     // Keep every dot the same size on screen, and let new ones arrive.
-    guesses.forEach((guess, index) => {
+    shown.forEach((guess, index) => {
       const dot = dots.current[index];
       if (!dot) return;
       if (!born.current.has(guess.guess_number)) {
@@ -78,21 +102,21 @@ export function Guesses({
       const arrival = REDUCED_MOTION ? 1 : Math.min(1, age / ARRIVAL_MS);
       const eased = 1 - Math.pow(1 - arrival, 3);
       const base = guess.is_best_so_far ? RECORD_SCALE : DOT_SCALE;
-      const emphasis = hovered === guess.guess_number ? 1.7 : 1;
+      const emphasis = highlighted === guess.guess_number ? 1.8 : 1;
       const distance = camera.position.distanceTo(dot.position);
       dot.scale.setScalar(distance * base * eased * emphasis);
     });
 
     if (now - lastDeclutter.current < DECLUTTER_INTERVAL_MS) return;
     lastDeclutter.current = now;
-    setLabelled(declutter(guesses, points, camera, size, hovered, metrics));
+    setLabelled(declutter(shown, points, camera, size, highlighted, metrics));
   });
 
   return (
     <>
-      {points.length >= 2 && (
+      {trail && (
         <Line
-          points={points}
+          points={trail}
           color={COLOR.inkFaint}
           transparent
           opacity={0.09}
@@ -109,35 +133,31 @@ export function Guesses({
         />
       )}
 
-      {guesses.map((guess, index) => {
-        const isAnswer = answer !== null && guess.word === answer;
-        return (
-          <mesh
-            key={guess.guess_number}
-            ref={(mesh) => {
-              dots.current[index] = mesh;
-            }}
-            position={[guess.position.x, guess.position.y, guess.position.z]}
-            onPointerOver={(event) => {
-              event.stopPropagation();
-              setHovered(guess.guess_number);
-            }}
-            onPointerOut={() => setHovered(null)}
-            visible={!isAnswer}
-          >
-            <sphereGeometry args={[1, 14, 14]} />
-            <meshBasicMaterial
-              color={guess.is_best_so_far ? COLOR.record : COLOR.observation}
-            />
-          </mesh>
-        );
-      })}
+      {shown.map((guess, index) => (
+        <mesh
+          key={guess.guess_number}
+          ref={(mesh) => {
+            dots.current[index] = mesh;
+          }}
+          position={[guess.position.x, guess.position.y, guess.position.z]}
+          onPointerOver={(event) => {
+            event.stopPropagation();
+            onHighlight(guess.guess_number);
+          }}
+          onPointerOut={() => onHighlight(null)}
+        >
+          <sphereGeometry args={[1, 14, 14]} />
+          <meshBasicMaterial
+            color={guess.is_best_so_far ? COLOR.record : COLOR.observation}
+          />
+        </mesh>
+      ))}
 
-      {guesses
+      {shown
         .filter(
           (guess) =>
-            labelled.includes(guess.guess_number) &&
-            !(answer !== null && guess.word === answer),
+            labelled.includes(guess.guess_number) ||
+            guess.guess_number === highlighted,
         )
         .map((guess) => (
           <Html
@@ -148,7 +168,7 @@ export function Guesses({
           >
             <Label
               guess={guess}
-              active={hovered === guess.guess_number}
+              active={highlighted === guess.guess_number}
               metrics={metrics}
             />
           </Html>
@@ -200,7 +220,7 @@ function Label({
         }}
       >
         {guess.similarity.toFixed(1)}
-        {active && guess.rank !== null && ` · מקום ${guess.rank} מתוך 1000`}
+        {active && guess.rank !== null && ` מקום ${guess.rank} מתוך 1000`}
       </div>
     </div>
   );
@@ -216,14 +236,14 @@ function declutter(
   points: THREE.Vector3[],
   camera: THREE.Camera,
   size: { width: number; height: number },
-  hovered: number | null,
+  highlighted: number | null,
   metrics: Metrics,
 ): number[] {
   const ranked = guesses
     .map((guess, index) => ({ guess, point: points[index] }))
     .sort((a, b) => {
-      if (a.guess.guess_number === hovered) return -1;
-      if (b.guess.guess_number === hovered) return 1;
+      if (a.guess.guess_number === highlighted) return -1;
+      if (b.guess.guess_number === highlighted) return 1;
       if (a.guess.is_best_so_far !== b.guess.is_best_so_far) {
         return a.guess.is_best_so_far ? -1 : 1;
       }

@@ -1,9 +1,12 @@
 """One solve run, streamed to whoever is watching.
 
-The engine blocks on network calls, so it runs in a worker thread and the
-events cross into the event loop through a queue. Everything streamed is
-also kept in `history`, so a browser that reloads mid-run replays what it
-missed and then joins the live stream.
+The engine blocks on network calls, so it runs in a worker thread and its
+events cross into the event loop one at a time. Every event is appended to
+`history` and readers follow that list by index rather than consuming a
+queue, so any number of readers can watch the same run and none of them can
+take a message another one needed. That is what makes reconnecting work: a
+browser that reloads mid-run replays what it missed and then joins the live
+stream, even if its previous connection has not been torn down yet.
 """
 
 from __future__ import annotations
@@ -17,8 +20,6 @@ from server.projection import BoardProjection
 from server.serialization import serialize
 from solver.engine import SemantleEngine
 
-_DONE = object()
-
 
 class SolveSession:
     def __init__(
@@ -31,7 +32,7 @@ class SolveSession:
         self.finished = False
         self._engine_factory = engine_factory
         self._projection = projection
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._arrived = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
 
@@ -48,25 +49,32 @@ class SolveSession:
         except Exception as error:  # surfaced to the browser, not swallowed
             self._publish({"type": "failed", "reason": str(error)})
         finally:
-            self._publish(_DONE)
+            self._publish(None)
 
-    def _publish(self, message) -> None:
-        self._loop.call_soon_threadsafe(self._queue.put_nowait, message)
+    def _publish(self, message: dict | None) -> None:
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._record, message)
+
+    def _record(self, message: dict | None) -> None:
+        """Runs on the event loop, so history and the flag stay consistent."""
+        if message is None:
+            self.finished = True
+        else:
+            self.history.append(message)
+        self._arrived.set()
 
     async def stream(self) -> AsyncIterator[dict]:
         """Replay what has happened, then follow the run live."""
-        replayed = 0
-        while replayed < len(self.history):
-            yield self.history[replayed]
-            replayed += 1
-
-        if self.finished:
-            return
-
+        index = 0
         while True:
-            message = await self._queue.get()
-            if message is _DONE:
-                self.finished = True
+            while index < len(self.history):
+                yield self.history[index]
+                index += 1
+            if self.finished:
                 return
-            self.history.append(message)
-            yield message
+            # Clear first, then re-check, so an event that lands in between
+            # is seen by the loop above instead of being waited past.
+            self._arrived.clear()
+            if index < len(self.history) or self.finished:
+                continue
+            await self._arrived.wait()
