@@ -4,6 +4,7 @@ Run once after downloading the model:
     python -m scripts.build_vocab
 """
 
+from server.projection import BASIS_FILENAME, fit_basis, save_basis
 from solver import config
 from solver.vocabulary import build_vocabulary
 
@@ -20,6 +21,12 @@ def main() -> None:
         config.RAW_MODEL_PATH, config.VOCAB_DIR, config.VOCAB_LIMIT
     )
     print(f"Wrote {len(vocabulary)} words to {config.VOCAB_DIR}")
+
+    # Fitted here rather than at server startup, so every deployment places
+    # a word in exactly the same direction and boots without an SVD.
+    mean, basis = fit_basis(vocabulary.vectors)
+    save_basis(config.VOCAB_DIR / BASIS_FILENAME, mean, basis)
+    print(f"Wrote the projection basis to {config.VOCAB_DIR / BASIS_FILENAME}")
 
 
 if __name__ == "__main__":

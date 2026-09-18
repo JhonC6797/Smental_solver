@@ -20,6 +20,7 @@ so adding a guess never moves the points already on the board.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -27,11 +28,24 @@ from solver.vocabulary import Vocabulary
 
 BOARD_RADIUS = 10.0
 _COMPONENTS = 3
+BASIS_FILENAME = "projection.npz"
 
 # A vector that projects to zero length has no direction. The fallback is a
 # fixed axis rather than a random one, so such a word still lands in the
 # same place on every run.
 _FALLBACK_DIRECTION = np.array([0.0, 0.0, 1.0])
+
+
+def fit_basis(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The mean and the three principal directions of the vocabulary."""
+    mean = vectors.mean(axis=0)
+    _u, _s, vt = np.linalg.svd(vectors - mean, full_matrices=False)
+    return mean, vt[:_COMPONENTS].T
+
+
+def save_basis(path: Path, mean: np.ndarray, basis: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(path, mean=mean, basis=basis)
 
 
 @dataclass(frozen=True)
@@ -43,12 +57,17 @@ class Position:
 
 
 class BoardProjection:
-    def __init__(self, vocabulary: Vocabulary) -> None:
+    def __init__(self, vocabulary: Vocabulary, basis_path: Path | None = None) -> None:
         self._vocabulary = vocabulary
-        self.mean_vector = vocabulary.vectors.mean(axis=0)
-        centred = vocabulary.vectors - self.mean_vector
-        _u, _s, vt = np.linalg.svd(centred, full_matrices=False)
-        self._basis = vt[:_COMPONENTS].T
+        # A stored basis is preferred over fitting one: the signs an SVD
+        # returns are not guaranteed to match across library versions, so
+        # refitting could mirror the whole board between machines. It also
+        # saves a decomposition of the full vocabulary at every startup.
+        if basis_path is not None and basis_path.exists():
+            stored = np.load(basis_path)
+            self.mean_vector, self._basis = stored["mean"], stored["basis"]
+        else:
+            self.mean_vector, self._basis = fit_basis(vocabulary.vectors)
 
     def place(self, word: str, similarity: float) -> Position:
         index = self._vocabulary.word_to_index[word]

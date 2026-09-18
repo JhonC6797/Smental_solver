@@ -12,7 +12,8 @@
  * live stream, so nothing is lost.
  */
 
-const SERVER = "http://localhost:8000";
+/** Set VITE_API_URL at build time to point at the deployed server. */
+const SERVER = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const SESSION_KEY = "semantle.session";
 
 export type Position = { x: number; y: number; z: number; radius: number };
@@ -91,13 +92,21 @@ function open(sessionId: string, handlers: Handlers): Connection {
   };
 }
 
-/** Start a new run. Any previous connection must be closed by the caller. */
-export async function startSolve(handlers: Handlers): Promise<Connection> {
+/**
+ * Join the day's run. Any previous connection must be closed by the caller.
+ *
+ * `recorded` says the search already finished and what arrives is the
+ * recording, so the page knows to play it back rather than drop twenty
+ * points on the board at once.
+ */
+export async function startSolve(
+  handlers: Handlers,
+): Promise<{ connection: Connection; recorded: boolean }> {
   const response = await fetch(`${SERVER}/api/solve/start`, { method: "POST" });
   if (!response.ok) throw new Error(`השרת החזיר ${response.status}`);
-  const { session_id } = await response.json();
+  const { session_id, recorded } = await response.json();
   rememberSession(session_id);
-  return open(session_id, handlers);
+  return { connection: open(session_id, handlers), recorded: Boolean(recorded) };
 }
 
 /** Rejoin the run this browser was watching, if there was one. */

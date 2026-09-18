@@ -72,3 +72,22 @@ def test_a_degenerate_vector_still_yields_a_unit_direction(vocabulary):
 def test_an_unknown_word_is_rejected(vocabulary):
     with pytest.raises(KeyError):
         BoardProjection(vocabulary).place("מילהשאיננה", 50.0)
+
+
+def test_a_stored_basis_is_used_instead_of_refitting(vocabulary, tmp_path):
+    """SVD sign conventions are not stable across library versions, so a
+    refit could mirror the board. The shipped basis settles it."""
+    from server.projection import fit_basis, save_basis
+
+    path = tmp_path / "projection.npz"
+    mean, basis = fit_basis(vocabulary.vectors)
+    save_basis(path, mean, -basis)  # deliberately flipped
+
+    fitted = BoardProjection(vocabulary).place("כלב", 40.0)
+    stored = BoardProjection(vocabulary, path).place("כלב", 40.0)
+    assert stored.x == pytest.approx(-fitted.x)
+
+
+def test_a_missing_basis_file_falls_back_to_fitting(vocabulary, tmp_path):
+    projection = BoardProjection(vocabulary, tmp_path / "absent.npz")
+    assert projection.place("כלב", 50.0).radius == pytest.approx(BOARD_RADIUS * 0.5)

@@ -1,66 +1,97 @@
 """The web server.
 
-It owns no algorithm knowledge: it starts a run, forwards whatever the
-engine emits, and adds board positions on the way out.
+It owns no algorithm knowledge: it hands out the day's run, forwards
+whatever the engine emits, and adds board positions on the way out.
+
+The day's puzzle is solved once and then replayed, so the number of
+requests this board makes to the Semantle API does not grow with the
+number of people watching it. See server/daily.py.
 """
 
 from __future__ import annotations
+
+import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from semantle.client import SemantleClient
-from server.projection import BoardProjection
+from server.daily import DailyRuns, RunStore
+from server.projection import BASIS_FILENAME, BoardProjection
 from server.session import SolveSession
+from solver import config
 from solver.engine import SemantleEngine
 from solver.vocabulary import load_vocabulary
 
+SOLVED_SIMILARITY = 100.0
+DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
 app = FastAPI(title="Semantle Solver Board")
 
-# The Vite dev server runs on a different port during development.
+# Set ALLOWED_ORIGINS to the deployed site's URL; the default is the Vite
+# dev server, which is where this runs during development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        origin.strip()
+        for origin in os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",")
+        if origin.strip()
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+_runs: DailyRuns | None = None
 _sessions: dict[str, SolveSession] = {}
-_vocabulary = None
-_projection: BoardProjection | None = None
 
 
 def reset_state() -> None:
     """Drop cached state. Used by tests that swap the vocabulary."""
-    global _vocabulary, _projection
-    _vocabulary = None
-    _projection = None
+    global _runs
+    _runs = None
     _sessions.clear()
 
 
-def _ensure_loaded() -> tuple:
-    """Load the vocabulary and fit the projection basis once per process.
+def _daily() -> DailyRuns:
+    """Build the day's run keeper once per process.
 
-    Refitting the basis per request would move points that are already on
-    the board, so it is built once and shared.
+    The vocabulary and the projection basis are loaded here and shared:
+    fitting the basis per request would be wasteful, and refitting it would
+    move points that are already on a viewer's board.
     """
-    global _vocabulary, _projection
-    if _vocabulary is None:
-        _vocabulary = load_vocabulary()
-        _projection = BoardProjection(_vocabulary)
-    return _vocabulary, _projection
+    global _runs
+    if _runs is not None:
+        return _runs
+
+    vocabulary = load_vocabulary()
+    projection = BoardProjection(vocabulary, config.VOCAB_DIR / BASIS_FILENAME)
+
+    def still_correct(word: str) -> bool:
+        result = SemantleClient().get_similarity(word)
+        return result is not None and result.similarity >= SOLVED_SIMILARITY
+
+    _runs = DailyRuns(
+        start_session=lambda: SolveSession(
+            engine_factory=lambda: SemantleEngine(vocabulary, SemantleClient()),
+            projection=projection,
+        ),
+        still_correct=still_correct,
+        store=RunStore(config.PROJECT_ROOT / "data" / "runs"),
+    )
+    return _runs
+
+
+@app.get("/api/health")
+async def health() -> dict:
+    return {"ok": True}
 
 
 @app.post("/api/solve/start")
 async def start_solve() -> dict:
-    vocabulary, projection = _ensure_loaded()
-    session = SolveSession(
-        engine_factory=lambda: SemantleEngine(vocabulary, SemantleClient()),
-        projection=projection,
-    )
+    """Hand back the day's run: today's search, live or recorded."""
+    session, recorded = _daily().current()
     _sessions[session.session_id] = session
-    session.start()
-    return {"session_id": session.session_id}
+    return {"session_id": session.session_id, "recorded": recorded}
 
 
 @app.websocket("/ws/solve/{session_id}")

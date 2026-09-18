@@ -35,6 +35,28 @@ class SolveSession:
         self._arrived = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        # Called once, on the event loop, the moment the run ends. It is how
+        # a completed run gets kept without waiting for the next visitor.
+        self.on_finish: Callable[[], None] | None = None
+
+    @classmethod
+    def from_recording(cls, history: list[dict]) -> "SolveSession":
+        """A finished run rebuilt from a stored history.
+
+        It has no engine and never starts a thread: readers replay it and
+        the stream ends, exactly as it would for a live run that is over.
+        """
+        session = cls.__new__(cls)
+        session.session_id = uuid.uuid4().hex
+        session.history = list(history)
+        session.finished = True
+        session._engine_factory = None
+        session._projection = None
+        session._arrived = asyncio.Event()
+        session._loop = None
+        session._thread = None
+        session.on_finish = None
+        return session
 
     def start(self) -> None:
         self._loop = asyncio.get_event_loop()
@@ -59,6 +81,8 @@ class SolveSession:
         """Runs on the event loop, so history and the flag stay consistent."""
         if message is None:
             self.finished = True
+            if self.on_finish is not None:
+                self.on_finish()
         else:
             self.history.append(message)
         self._arrived.set()

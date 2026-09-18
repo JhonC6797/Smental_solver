@@ -12,7 +12,7 @@ class InstantClient:
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
     words = ["בית", "אוכל", "אדם", "מחשב"]
     rng = np.random.default_rng(7)
     vectors = rng.normal(size=(len(words), 8)).astype(np.float32)
@@ -25,6 +25,7 @@ def client(monkeypatch):
         lambda: Vocabulary(words=words, vectors=vectors),
     )
     monkeypatch.setattr(app_module, "SemantleClient", InstantClient)
+    monkeypatch.setattr(app_module.config, "PROJECT_ROOT", tmp_path)
     app_module.reset_state()
     return TestClient(app_module.app)
 
@@ -63,3 +64,20 @@ def test_an_unknown_session_is_rejected(client):
     with pytest.raises(Exception):
         with client.websocket_connect("/ws/solve/nope") as socket:
             socket.receive_json()
+
+
+def test_the_day_is_solved_once_and_replayed_after(client):
+    """Every visitor must not cost the Semantle API another twenty calls."""
+    first = client.post("/api/solve/start").json()
+    assert first["recorded"] is False
+    with client.websocket_connect(f"/ws/solve/{first['session_id']}") as socket:
+        while socket.receive_json()["type"] not in {"solved", "failed"}:
+            pass
+
+    second = client.post("/api/solve/start").json()
+    assert second["recorded"] is True
+    assert second["session_id"] == first["session_id"]
+
+
+def test_health_reports_ready(client):
+    assert client.get("/api/health").json() == {"ok": True}

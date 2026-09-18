@@ -35,6 +35,7 @@ export default function App() {
   const [recordsOnly, setRecordsOnly] = useState(false);
   const [highlighted, setHighlighted] = useState<number | null>(null);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
+  const [pendingPlayback, setPendingPlayback] = useState(false);
 
   const startedAt = useRef<number | null>(null);
   const connection = useRef<Connection>(CLOSED);
@@ -97,6 +98,13 @@ export default function App() {
     return () => clearInterval(timer);
   }, [running]);
 
+  // The recording lands in one burst; start playing it once it is all here.
+  useEffect(() => {
+    if (!pendingPlayback || !answer) return;
+    setPendingPlayback(false);
+    setReplayIndex(0);
+  }, [pendingPlayback, answer]);
+
   useEffect(() => {
     if (replayIndex === null) return;
     if (replayIndex >= guesses.length) {
@@ -116,11 +124,16 @@ export default function App() {
     setNote(null);
     setElapsed(0);
     setReplayIndex(null);
+    setPendingPlayback(false);
     setHighlighted(null);
     startedAt.current = Date.now();
     setRunning(true);
     try {
-      connection.current = await startSolve({ onMessage: handle, onLost: lose });
+      const joined = await startSolve({ onMessage: handle, onLost: lose });
+      connection.current = joined.connection;
+      // A recording arrives all at once, so it is played back rather than
+      // dumped: the point of the board is watching the search happen.
+      if (joined.recorded) setPendingPlayback(true);
     } catch {
       setNote("אין קשר לשרת. הפעילו אותו עם python -m uvicorn server.app:app");
       setRunning(false);

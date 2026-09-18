@@ -18,6 +18,7 @@
  *   panels  solve, then open the log and the chart
  *   filter  solve, open the log, switch it to records only
  *   replay  solve, start a replay, photograph it part-way through
+ *   playback  join the day's recording and photograph it mid-playback
  */
 
 import { chromium } from "playwright";
@@ -52,7 +53,10 @@ const press = async (name) => {
   await page.waitForTimeout(700);
 };
 
-if (SCENE !== "empty") {
+if (SCENE === "playback") {
+  await page.getByRole("button").first().click();
+  await page.waitForTimeout(2600);
+} else if (SCENE !== "empty") {
   await page.getByRole("button").first().click();
   await page.waitForTimeout(SOLVE_MS);
 }
