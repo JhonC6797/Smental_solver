@@ -1,111 +1,112 @@
+/**
+ * Design tokens.
+ *
+ * The board is an instrument, and its visual language comes from Hebrew
+ * illuminated manuscript: lapis ink, parchment, and gold reserved for the
+ * moment the hidden thing is revealed. Every mark colour below passed the
+ * six-check palette validator against the dark surface — lightness band,
+ * chroma floor, colour-blind separation, normal-vision separation and
+ * contrast — so the board stays readable without relying on hue alone.
+ */
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Surfaces */
+  --field: #0f1a2b;
+  --field-deep: #0a1220;
+  --rule: #23344c;
+  --rule-soft: #1a2739;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Ink */
+  --ink: #e8dfcb;
+  --ink-soft: #a9b3c4;
+  --ink-faint: #6b788c;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Data marks — validated, do not substitute by eye */
+  --observation: #3a8fc4; /* an ordinary guess */
+  --record: #bc8022; /* a new best, and the found word */
+  --hypothesis: #8a68c4; /* where the algorithm believes the answer is */
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  /* Type */
+  --content: "Frank Ruhl Libre", Georgia, serif;
+  --instrument: "Assistant", system-ui, sans-serif;
+
+  /* A major-third scale, 16px base */
+  --t-xs: 0.8rem;
+  --t-s: 0.875rem;
+  --t-m: 1rem;
+  --t-l: 1.25rem;
+  --t-xl: 1.563rem;
+  --t-2xl: 1.953rem;
+  --t-3xl: 3.815rem;
+
+  --rail: 56px;
+
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+* {
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
+  background: var(--field);
+  color: var(--ink);
+  font: 400 var(--t-m) / 1.5 var(--instrument);
+  -webkit-font-smoothing: antialiased;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+button {
+  font: inherit;
+  color: inherit;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+:focus-visible {
+  outline: 2px solid var(--record);
+  outline-offset: 3px;
+}
+
+/* Tabular figures keep the live readouts from jittering as they count up. */
+.figure {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
+
+/* The one reveal: the answer arriving at the centre. */
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2.1em) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-2.1em) scale(1);
   }
 }
-p {
-  margin: 0;
-}
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
+/* The log's scrollbar should read as part of the instrument, not the OS. */
+ol::-webkit-scrollbar {
+  width: 8px;
+}
+ol::-webkit-scrollbar-thumb {
+  background: var(--rule);
   border-radius: 4px;
-  color: var(--text-h);
 }
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+ol::-webkit-scrollbar-track {
+  background: transparent;
 }
