@@ -8,7 +8,9 @@ import { Rail } from "./ui/Rail";
 import { useNarrow } from "./ui/useNarrow";
 import {
   CLOSED,
+  LIVE_SOLVER,
   hasSession,
+  loadRecording,
   rejoinSolve,
   startSolve,
   type Connection,
@@ -36,6 +38,7 @@ export default function App() {
   const [highlighted, setHighlighted] = useState<number | null>(null);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const [pendingPlayback, setPendingPlayback] = useState(false);
+  const [recordedAt, setRecordedAt] = useState<string | null>(null);
 
   const startedAt = useRef<number | null>(null);
   const connection = useRef<Connection>(CLOSED);
@@ -81,7 +84,7 @@ export default function App() {
   // Rejoin the run this tab was watching before it reloaded. The server
   // replays what was missed, so nothing is lost.
   useEffect(() => {
-    if (!hasSession()) return;
+    if (!LIVE_SOLVER || !hasSession()) return;
     const rejoined = rejoinSolve({ onMessage: handle, onLost: lose });
     if (rejoined) connection.current = rejoined;
     return () => {
@@ -115,7 +118,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [replayIndex, guesses.length]);
 
-  async function solve() {
+  function clearBoard() {
     connection.current.close();
     connection.current = CLOSED;
     setGuesses([]);
@@ -127,12 +130,29 @@ export default function App() {
     setPendingPlayback(false);
     setHighlighted(null);
     startedAt.current = Date.now();
+  }
+
+  async function solve() {
+    clearBoard();
     setRunning(true);
+    // A recording arrives all at once, so it is played back rather than
+    // dumped: the point of the board is watching the search happen.
+    if (!LIVE_SOLVER) {
+      const recording = await loadRecording();
+      if (recording === null) {
+        setNote("עוד לא פורסמה ריצה. המשימה היומית מפרסמת אותה כמה פעמים ביום.");
+        setRunning(false);
+        return;
+      }
+      setRecordedAt(recording.recorded_at);
+      recording.events.forEach(handle);
+      setPendingPlayback(true);
+      return;
+    }
+
     try {
       const joined = await startSolve({ onMessage: handle, onLost: lose });
       connection.current = joined.connection;
-      // A recording arrives all at once, so it is played back rather than
-      // dumped: the point of the board is watching the search happen.
       if (joined.recorded) setPendingPlayback(true);
     } catch {
       setNote("אין קשר לשרת. הפעילו אותו עם python -m uvicorn server.app:app");
@@ -179,6 +199,8 @@ export default function App() {
       />
 
       {guesses.length === 0 && !running && <Opening />}
+
+      {recordedAt && guesses.length > 0 && <RecordedOn at={recordedAt} />}
 
       {logOpen && guesses.length > 0 && (
         <Log
@@ -278,5 +300,33 @@ function Opening() {
         ובכיוון שנקבע ממשמעותו, עד שהחיפוש סוגר על התשובה.
       </p>
     </div>
+  );
+}
+
+/**
+ * When the run was solved. The page shows a recording, so saying when it
+ * was made is the difference between a stale board and an honest one.
+ */
+function RecordedOn({ at }: { at: string }) {
+  const when = new Date(at);
+  if (Number.isNaN(when.getTime())) return null;
+  return (
+    <p
+      dir="rtl"
+      style={{
+        position: "absolute",
+        top: 14,
+        insetInlineStart: 0,
+        insetInlineEnd: 0,
+        margin: 0,
+        zIndex: 5,
+        textAlign: "center",
+        fontSize: 12,
+        color: COLOR.inkFaint,
+        pointerEvents: "none",
+      }}
+    >
+      נפתר ב־{when.toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })}
+    </p>
   );
 }

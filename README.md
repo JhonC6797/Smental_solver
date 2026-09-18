@@ -55,7 +55,7 @@
    python -m scripts.build_vocab
    ```
 
-4. הרצת הפותר:
+4. הרצת הפותר בטרמינל:
 
    ```
    python run_cli.py
@@ -66,6 +66,37 @@
    ```
    python -m pytest
    ```
+
+## הלוח
+
+האתר סטטי. משימה מתוזמנת ([.github/workflows/daily-solve.yml](.github/workflows/daily-solve.yml))
+פותרת את מילת היום כמה פעמים ביום ומפרסמת את הריצה כקובץ
+`web/public/daily.json`; הדף טוען אותו ישירות, כך שאין שרת שצריך להמתין לו
+ו-Semantle שומע מהפרויקט כמה פעמים ביום במקום פעם לכל מבקר. לפני כל ריצה
+המשימה שואלת בקריאה אחת האם המילה השמורה עדיין מחזירה 100, ואם כן אינה
+עושה דבר.
+
+```
+npm --prefix web install
+npm --prefix web run dev
+```
+
+### לצפות בחיפוש אמיתי בזמן אמת
+
+השרת לא נדרש לאתר, אבל הוא קיים כדי לראות את הפותר עובד מול המשחק:
+
+```
+python -m uvicorn server.app:app --port 8000     # טרמינל ראשון
+npm --prefix web run dev                          # טרמינל שני
+```
+
+ובנוסף `web/.env.local` עם `VITE_LIVE_SOLVER=true` (ראה `web/.env.example`).
+
+### לפרסם ריצה ידנית
+
+```
+python -m scripts.publish_daily
+```
 
 
 cd C:\VScdoeProjects\Smental_Solver

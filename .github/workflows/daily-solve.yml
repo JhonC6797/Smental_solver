@@ -1,0 +1,53 @@
+name: Solve today's word
+
+# The board is a static site: this job is the only thing that ever talks to
+# the Semantle API, and it publishes the run as a file the page loads
+# directly. Running it a few times a day catches the puzzle changing over
+# without needing to know what hour that happens.
+#
+# Each run that finds a new word pushes a commit, and that push is what
+# keeps GitHub from disabling this schedule after sixty quiet days.
+
+on:
+  schedule:
+    - cron: "20 */4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-solve
+  cancel-in-progress: false
+
+jobs:
+  solve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch the vocabulary
+        run: python -m scripts.fetch_vocab
+
+      - name: Solve, if the word has changed
+        run: python -m scripts.publish_daily
+
+      - name: Publish the recording
+        run: |
+          if git diff --quiet -- web/public/daily.json; then
+            echo "Today's word was already recorded; nothing to publish."
+            exit 0
+          fi
+          git config user.name "semantle-solver"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/public/daily.json
+          git commit -m "chore: record today's solve"
+          git push

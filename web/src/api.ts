@@ -16,6 +16,14 @@
 const SERVER = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const SESSION_KEY = "semantle.session";
 
+/**
+ * The published site reads a run that was solved earlier by a scheduled
+ * job, so there is no server to wait for. Set VITE_LIVE_SOLVER=true during
+ * development to watch a real search against the game instead.
+ */
+export const LIVE_SOLVER = import.meta.env.VITE_LIVE_SOLVER === "true";
+const RECORDING_URL = `${import.meta.env.BASE_URL}daily.json`;
+
 export type Position = { x: number; y: number; z: number; radius: number };
 
 export type Message =
@@ -144,3 +152,21 @@ function forgetSession(): void {
 }
 
 export { CLOSED };
+
+export type Recording = {
+  answer: string;
+  recorded_at: string;
+  events: Message[];
+};
+
+/** The run published by the scheduled job, or null if none is there yet. */
+export async function loadRecording(): Promise<Recording | null> {
+  try {
+    const response = await fetch(RECORDING_URL, { cache: "no-cache" });
+    if (!response.ok) return null;
+    const recording = await response.json();
+    return Array.isArray(recording?.events) ? recording : null;
+  } catch {
+    return null;
+  }
+}
