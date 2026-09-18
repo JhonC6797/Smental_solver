@@ -250,7 +250,7 @@ function Opening() {
           color: COLOR.ink,
         }}
       >
-        מרחב המשמעות
+        מציאת המילה היומית בסמענטל
       </h1>
       <p
         style={{

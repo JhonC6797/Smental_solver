@@ -60,3 +60,10 @@
    ```
    python -m pytest
    ```
+
+
+cd C:\VScdoeProjects\Smental_Solver
+python -m uvicorn server.app:app --port 8000
+
+cd C:\VScdoeProjects\Smental_Solver\web
+npm run dev
