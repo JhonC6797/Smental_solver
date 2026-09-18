@@ -26,6 +26,9 @@ def client(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(app_module, "SemantleClient", InstantClient)
     monkeypatch.setattr(app_module.config, "PROJECT_ROOT", tmp_path)
+    # Without this the server would find the real 300-dimension basis and
+    # try to project this fixture's 8-dimension vectors through it.
+    monkeypatch.setattr(app_module.config, "VOCAB_DIR", tmp_path / "vocab")
     app_module.reset_state()
     return TestClient(app_module.app)
 

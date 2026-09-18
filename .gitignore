@@ -15,3 +15,6 @@ data/
 # Frontend build output and deps
 web/node_modules/
 web/dist/
+
+# Staged copies for uploading to a GitHub release
+dist-upload/

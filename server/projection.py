@@ -63,9 +63,17 @@ class BoardProjection:
         # returns are not guaranteed to match across library versions, so
         # refitting could mirror the whole board between machines. It also
         # saves a decomposition of the full vocabulary at every startup.
+        dimensions = vocabulary.vectors.shape[1]
         if basis_path is not None and basis_path.exists():
             stored = np.load(basis_path)
-            self.mean_vector, self._basis = stored["mean"], stored["basis"]
+            mean, basis = stored["mean"], stored["basis"]
+            if basis.shape[0] != dimensions or mean.shape[0] != dimensions:
+                raise ValueError(
+                    f"The stored basis at {basis_path} is built for "
+                    f"{basis.shape[0]} dimensions but the vocabulary has "
+                    f"{dimensions}. Rebuild it: python -m scripts.build_vocab"
+                )
+            self.mean_vector, self._basis = mean, basis
         else:
             self.mean_vector, self._basis = fit_basis(vocabulary.vectors)
 

@@ -37,15 +37,21 @@
    pip install -r requirements.txt
    ```
 
-2. הורדת מודל הוקטורים (1.23GB, לא נכנס לגיט):
+2. הבאת אוצר המילים הבנוי (26MB):
+
+   ```
+   python -m scripts.fetch_vocab
+   ```
+
+   הקובץ אינו נשמר בגיט — בינארי בגודל כזה היה נשאר בהיסטוריה לנצח, וכל
+   בנייה מחדש הייתה מוסיפה עותק. הוא מתפרסם כנכס של GitHub Release ונמשך
+   בזמן ההתקנה. אותה פקודה משמשת גם כשלב build בפריסה.
+
+   כדי לבנות אותו מחדש מהמקור במקום להוריד (למשל אחרי שינוי בפילטר
+   המילים), צריך את מודל FastText המלא:
 
    ```
    curl -L -o data/wiki.he.vec https://dl.fbaipublicfiles.com/fasttext/vectors-wiki/wiki.he.vec
-   ```
-
-3. בניית ארטיפקט אוצר המילים (פעם אחת, ממיר ל-26MB שנטענים מיידית):
-
-   ```
    python -m scripts.build_vocab
    ```
 

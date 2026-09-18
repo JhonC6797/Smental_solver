@@ -91,3 +91,14 @@ def test_a_stored_basis_is_used_instead_of_refitting(vocabulary, tmp_path):
 def test_a_missing_basis_file_falls_back_to_fitting(vocabulary, tmp_path):
     projection = BoardProjection(vocabulary, tmp_path / "absent.npz")
     assert projection.place("כלב", 50.0).radius == pytest.approx(BOARD_RADIUS * 0.5)
+
+
+def test_a_basis_built_for_a_different_vocabulary_is_refused(vocabulary, tmp_path):
+    """A rebuilt vocabulary beside a stale basis is a realistic deploy
+    mistake, and it must say so rather than produce nonsense positions."""
+    from server.projection import save_basis
+
+    path = tmp_path / "projection.npz"
+    save_basis(path, np.zeros(300), np.zeros((300, 3)))
+    with pytest.raises(ValueError, match="build_vocab"):
+        BoardProjection(vocabulary, path)
