@@ -26,6 +26,7 @@ from solver.engine import SemantleEngine
 from solver.vocabulary import load_vocabulary, Vocabulary
 
 OUTPUT_PATH = config.PROJECT_ROOT / "web" / "public" / "daily.json"
+FAILED_RUN_PATH = config.PROJECT_ROOT / "web" / "public" / "daily-failed.json"
 SOLVED_SIMILARITY = 100.0
 
 
@@ -52,22 +53,39 @@ def is_current(recording: dict | None, client) -> bool:
     return result is not None and result.similarity >= SOLVED_SIMILARITY
 
 
-def build_recording(vocabulary: Vocabulary, projection: BoardProjection, client) -> dict:
+def build_recording(
+    vocabulary: Vocabulary,
+    projection: BoardProjection,
+    client,
+    failed_run_path: Path | None = None,
+) -> dict | None:
+    """None means the solver never reached the answer this run.
+
+    That is an expected outcome, not an error: the scheduled job tries again
+    in a few hours, so the caller must leave the previous recording in place
+    rather than fail the workflow. When failed_run_path is given, the run's
+    own events are written there — the same wire format as a solved
+    recording, so the board can load and replay a failure for diagnosis.
+    """
     events = [
         serialize(event, projection)
         for event in SemantleEngine(vocabulary, client).run()
     ]
     answer = answer_of(events)
     if answer is None:
-        raise SystemExit(
-            "The solver did not reach the answer, so there is nothing worth "
-            "publishing. The previous recording is left in place."
-        )
-    return {
-        "answer": answer,
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
-        "events": events,
-    }
+        if failed_run_path is not None:
+            _write_recording(failed_run_path, {"answer": None, "events": events})
+        return None
+    return _stamped({"answer": answer, "events": events})
+
+
+def _stamped(recording: dict) -> dict:
+    return {**recording, "recorded_at": datetime.now(timezone.utc).isoformat()}
+
+
+def _write_recording(path: Path, recording: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_stamped(recording), ensure_ascii=False), encoding="utf-8")
 
 
 def main() -> None:
@@ -80,7 +98,14 @@ def main() -> None:
     print("The word has changed. Solving...")
     vocabulary = load_vocabulary()
     projection = BoardProjection(vocabulary, config.VOCAB_DIR / BASIS_FILENAME)
-    recording = build_recording(vocabulary, projection, client)
+    recording = build_recording(vocabulary, projection, client, FAILED_RUN_PATH)
+    if recording is None:
+        print(
+            "The solver did not reach the answer, so there is nothing worth "
+            "publishing. The previous recording is left in place. The failed "
+            f"run's events were written to {FAILED_RUN_PATH} for diagnosis."
+        )
+        return
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(

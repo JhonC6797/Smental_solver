@@ -51,3 +51,17 @@ jobs:
           git add web/public/daily.json
           git commit -m "chore: record today's solve"
           git push
+
+      # A run that never reached the answer writes its events to
+      # web/public/daily-failed.json instead (see scripts/publish_daily.py).
+      # It is not committed — that file is for looking at a stuck search on
+      # the board locally, not for the deployed site — so it is handed out
+      # as a run artifact instead.
+      - name: Upload the failed run, if there was one
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-run-${{ github.run_id }}
+          path: web/public/daily-failed.json
+          if-no-files-found: ignore
+          retention-days: 14

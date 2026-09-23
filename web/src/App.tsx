@@ -10,6 +10,7 @@ import {
   CLOSED,
   LIVE_SOLVER,
   hasSession,
+  loadFailedRun,
   loadRecording,
   rejoinSolve,
   startSolve,
@@ -17,6 +18,13 @@ import {
   type Guess,
   type Message,
 } from "./api";
+
+/** ?debug=failed replays the last run that never reached the answer,
+ * instead of the published recording — for looking at a stuck search on
+ * the board. Not linked from the UI. */
+const DEBUG_FAILED_RUN = new URLSearchParams(window.location.search).get(
+  "debug",
+) === "failed";
 
 /** Fast enough to watch the shape of the search, slow enough to follow. */
 const REPLAY_STEP_MS = 170;
@@ -138,9 +146,15 @@ export default function App() {
     // A recording arrives all at once, so it is played back rather than
     // dumped: the point of the board is watching the search happen.
     if (!LIVE_SOLVER) {
-      const recording = await loadRecording();
+      const recording = DEBUG_FAILED_RUN
+        ? await loadFailedRun()
+        : await loadRecording();
       if (recording === null) {
-        setNote("עוד לא פורסמה ריצה. המשימה היומית מפרסמת אותה כמה פעמים ביום.");
+        setNote(
+          DEBUG_FAILED_RUN
+            ? "אין ריצה כושלת שמורה להצגה."
+            : "עוד לא פורסמה ריצה. המשימה היומית מפרסמת אותה כמה פעמים ביום.",
+        );
         setRunning(false);
         return;
       }

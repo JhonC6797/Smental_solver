@@ -24,6 +24,14 @@ const SESSION_KEY = "semantle.session";
 export const LIVE_SOLVER = import.meta.env.VITE_LIVE_SOLVER === "true";
 const RECORDING_URL = `${import.meta.env.BASE_URL}daily.json`;
 
+/**
+ * A run that never reached 100% is not published to the site, but its
+ * events are dropped here locally (see scripts/publish_daily.py) so a
+ * stuck search can still be replayed on the board for diagnosis, via
+ * ?debug=failed.
+ */
+const FAILED_RUN_URL = `${import.meta.env.BASE_URL}daily-failed.json`;
+
 export type Position = { x: number; y: number; z: number; radius: number };
 
 export type Message =
@@ -154,19 +162,31 @@ function forgetSession(): void {
 export { CLOSED };
 
 export type Recording = {
-  answer: string;
+  answer: string | null;
   recorded_at: string;
   events: Message[];
 };
 
-/** The run published by the scheduled job, or null if none is there yet. */
-export async function loadRecording(): Promise<Recording | null> {
+async function fetchRecording(url: string): Promise<Recording | null> {
   try {
-    const response = await fetch(RECORDING_URL, { cache: "no-cache" });
+    const response = await fetch(url, { cache: "no-cache" });
     if (!response.ok) return null;
     const recording = await response.json();
     return Array.isArray(recording?.events) ? recording : null;
   } catch {
     return null;
   }
+}
+
+/** The run published by the scheduled job, or null if none is there yet. */
+export function loadRecording(): Promise<Recording | null> {
+  return fetchRecording(RECORDING_URL);
+}
+
+/**
+ * The most recent run that never reached the answer, or null if there is
+ * none on hand. Its `answer` is always null. See FAILED_RUN_URL.
+ */
+export function loadFailedRun(): Promise<Recording | null> {
+  return fetchRecording(FAILED_RUN_URL);
 }

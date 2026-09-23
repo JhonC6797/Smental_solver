@@ -75,11 +75,33 @@ def test_a_recording_is_json_safe(vocabulary):
 
 def test_a_run_that_never_finds_the_word_is_not_published(vocabulary):
     """Overwriting a good recording with a failed run would leave the site
-    showing nothing at all."""
-    with pytest.raises(SystemExit, match="nothing worth publishing"):
-        build_recording(
-            vocabulary, BoardProjection(vocabulary), FakeClient(winner="לא-קיימת")
-        )
+    showing nothing at all. This is an expected outcome the scheduled job
+    retries later, not an error that should fail the workflow."""
+    recording = build_recording(
+        vocabulary, BoardProjection(vocabulary), FakeClient(winner="לא-קיימת")
+    )
+    assert recording is None
+
+
+def test_a_failed_run_is_written_for_diagnosis_when_a_path_is_given(
+    vocabulary, tmp_path
+):
+    """The board is how the suspect calibration constants get measured, so a
+    failed run must not just vanish — it needs to be loadable for a look."""
+    failed_path = tmp_path / "daily-failed.json"
+    recording = build_recording(
+        vocabulary,
+        BoardProjection(vocabulary),
+        FakeClient(winner="לא-קיימת"),
+        failed_path,
+    )
+    assert recording is None
+
+    dumped = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert dumped["answer"] is None
+    assert dumped["recorded_at"]
+    guesses = [e for e in dumped["events"] if e["type"] == "guess"]
+    assert guesses
 
 
 def test_answer_of_finds_nothing_in_a_run_that_failed():
