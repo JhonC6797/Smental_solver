@@ -118,3 +118,24 @@ def test_diagnostics_carry_the_target_estimate_as_a_direction(vocabulary):
 def test_running_out_of_attempts_emits_failed(vocabulary):
     stream = run(SemantleEngine(vocabulary, ScriptedClient({}), max_attempts=1))
     assert isinstance(stream[-1], events.Failed)
+
+
+def test_a_failed_run_still_reports_its_best_guess(vocabulary):
+    """Giving up should not throw away the best candidate found so far —
+    a consumer may publish it instead of showing nothing."""
+    stream = run(SemantleEngine(vocabulary, ScriptedClient({}), max_attempts=1))
+    guesses = [e for e in stream if isinstance(e, events.Guess)]
+    failed = stream[-1]
+    assert isinstance(failed, events.Failed)
+    # Every word scores the same default, so only the first one counts as
+    # an improvement; that is the best guess a failed run reports.
+    assert failed.best_word == guesses[0].word
+    assert failed.best_similarity == guesses[0].similarity
+
+
+def test_a_totally_unreachable_game_reports_no_best_guess(vocabulary):
+    """No word was ever scored, so there is nothing to fall back to."""
+    stream = run(SemantleEngine(vocabulary, FailingClient(), max_attempts=60))
+    failed = stream[-1]
+    assert isinstance(failed, events.Failed)
+    assert failed.best_word is None

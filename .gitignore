@@ -16,8 +16,5 @@ data/
 web/node_modules/
 web/dist/
 
-# A failed solver run, written for local diagnosis on the board
-web/public/daily-failed.json
-
 # Staged copies for uploading to a GitHub release
 dist-upload/

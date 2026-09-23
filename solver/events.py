@@ -41,7 +41,13 @@ class Solved:
 
 @dataclass(frozen=True)
 class Failed:
+    """Giving up is true of any search algorithm, and so is having a best
+    candidate on hand when it happens — a consumer may publish that
+    candidate rather than showing nothing."""
+
     reason: str
+    best_word: str | None = None
+    best_similarity: float = -1.0
 
 
 @dataclass(frozen=True)

@@ -54,7 +54,12 @@ def serialize(event: events.Event, projection: BoardProjection) -> dict[str, Any
         }
 
     if isinstance(event, events.Failed):
-        return {"type": "failed", "reason": event.reason}
+        return {
+            "type": "failed",
+            "reason": event.reason,
+            "best_word": event.best_word,
+            "best_similarity": event.best_similarity,
+        }
 
     if isinstance(event, events.Diagnostics):
         return {

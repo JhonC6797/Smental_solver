@@ -5,12 +5,7 @@ import pytest
 
 from semantle.client import GuessResult
 from server.projection import BoardProjection
-from scripts.publish_daily import (
-    answer_of,
-    build_recording,
-    is_current,
-    read_recording,
-)
+from scripts.publish_daily import build_recording, is_current, read_recording
 from solver.vocabulary import Vocabulary
 
 
@@ -59,9 +54,22 @@ def test_an_unreachable_game_is_treated_as_not_current():
     assert is_current({"answer": "חתול"}, UnreachableClient()) is False
 
 
+def test_an_unconfirmed_guess_is_current_only_while_its_score_holds():
+    """The search is deterministic: if the best guess still scores what it
+    scored last time, the puzzle word has not changed, and solving again
+    would just repeat the same failed search."""
+    recording = {"answer": "בית", "confirmed": False, "best_similarity": 20.0}
+    assert is_current(recording, FakeClient(winner="none")) is True
+
+    client = FakeClient(winner="none")
+    client.get_similarity = lambda word: GuessResult(word, 31.0, None)
+    assert is_current(recording, client) is False
+
+
 def test_a_recording_carries_the_answer_and_placed_guesses(vocabulary):
     recording = build_recording(vocabulary, BoardProjection(vocabulary), FakeClient())
     assert recording["answer"] == "חתול"
+    assert recording["confirmed"] is True
     assert recording["recorded_at"]
     guesses = [e for e in recording["events"] if e["type"] == "guess"]
     assert guesses
@@ -73,39 +81,25 @@ def test_a_recording_is_json_safe(vocabulary):
     json.dumps(recording)  # must not raise
 
 
-def test_a_run_that_never_finds_the_word_is_not_published(vocabulary):
-    """Overwriting a good recording with a failed run would leave the site
-    showing nothing at all. This is an expected outcome the scheduled job
-    retries later, not an error that should fail the workflow."""
+def test_a_run_that_never_finds_the_word_publishes_its_best_guess(vocabulary):
+    """A board stuck showing yesterday's word is worse than an honest board
+    showing today's best attempt — so a run that never reaches 100% still
+    gets published, just marked unconfirmed."""
     recording = build_recording(
         vocabulary, BoardProjection(vocabulary), FakeClient(winner="לא-קיימת")
     )
-    assert recording is None
-
-
-def test_a_failed_run_is_written_for_diagnosis_when_a_path_is_given(
-    vocabulary, tmp_path
-):
-    """The board is how the suspect calibration constants get measured, so a
-    failed run must not just vanish — it needs to be loadable for a look."""
-    failed_path = tmp_path / "daily-failed.json"
-    recording = build_recording(
-        vocabulary,
-        BoardProjection(vocabulary),
-        FakeClient(winner="לא-קיימת"),
-        failed_path,
-    )
-    assert recording is None
-
-    dumped = json.loads(failed_path.read_text(encoding="utf-8"))
-    assert dumped["answer"] is None
-    assert dumped["recorded_at"]
-    guesses = [e for e in dumped["events"] if e["type"] == "guess"]
+    assert recording["confirmed"] is False
+    assert recording["answer"] == "בית"  # the first word to score above nothing
+    assert recording["best_similarity"] == 20.0
+    guesses = [e for e in recording["events"] if e["type"] == "guess"]
     assert guesses
 
 
-def test_answer_of_finds_nothing_in_a_run_that_failed():
-    assert answer_of([{"type": "guess"}, {"type": "failed"}]) is None
+def test_a_totally_unreachable_game_publishes_nothing(vocabulary):
+    """Not even one word got a score, so there is no best guess to fall
+    back to — the previous recording is left in place."""
+    recording = build_recording(vocabulary, BoardProjection(vocabulary), UnreachableClient())
+    assert recording is None
 
 
 def test_reading_a_corrupt_recording_returns_nothing(tmp_path):

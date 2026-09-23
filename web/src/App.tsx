@@ -10,7 +10,6 @@ import {
   CLOSED,
   LIVE_SOLVER,
   hasSession,
-  loadFailedRun,
   loadRecording,
   rejoinSolve,
   startSolve,
@@ -18,13 +17,6 @@ import {
   type Guess,
   type Message,
 } from "./api";
-
-/** ?debug=failed replays the last run that never reached the answer,
- * instead of the published recording — for looking at a stuck search on
- * the board. Not linked from the UI. */
-const DEBUG_FAILED_RUN = new URLSearchParams(window.location.search).get(
-  "debug",
-) === "failed";
 
 /** Fast enough to watch the shape of the search, slow enough to follow. */
 const REPLAY_STEP_MS = 170;
@@ -78,7 +70,11 @@ export default function App() {
         setRunning(false);
         break;
       case "failed":
-        setNote(message.reason);
+        setNote(
+          message.best_word
+            ? `לא הגיע ל-100%. הניחוש הכי טוב: ${message.best_word} (${message.best_similarity.toFixed(1)})`
+            : message.reason,
+        );
         setRunning(false);
         break;
     }
@@ -146,15 +142,9 @@ export default function App() {
     // A recording arrives all at once, so it is played back rather than
     // dumped: the point of the board is watching the search happen.
     if (!LIVE_SOLVER) {
-      const recording = DEBUG_FAILED_RUN
-        ? await loadFailedRun()
-        : await loadRecording();
+      const recording = await loadRecording();
       if (recording === null) {
-        setNote(
-          DEBUG_FAILED_RUN
-            ? "אין ריצה כושלת שמורה להצגה."
-            : "עוד לא פורסמה ריצה. המשימה היומית מפרסמת אותה כמה פעמים ביום.",
-        );
+        setNote("עוד לא פורסמה ריצה. המשימה היומית מפרסמת אותה כמה פעמים ביום.");
         setRunning(false);
         return;
       }
@@ -214,7 +204,9 @@ export default function App() {
 
       {guesses.length === 0 && !running && <Opening />}
 
-      {recordedAt && guesses.length > 0 && <RecordedOn at={recordedAt} />}
+      {recordedAt && guesses.length > 0 && (
+        <RecordedOn at={recordedAt} solved={answer !== null} />
+      )}
 
       {logOpen && guesses.length > 0 && (
         <Log
@@ -318,10 +310,11 @@ function Opening() {
 }
 
 /**
- * When the run was solved. The page shows a recording, so saying when it
- * was made is the difference between a stale board and an honest one.
+ * When the run was recorded. The page shows a recording, so saying when it
+ * was made is the difference between a stale board and an honest one. Not
+ * every recording reached the answer — see the "failed" note for that.
  */
-function RecordedOn({ at }: { at: string }) {
+function RecordedOn({ at, solved }: { at: string; solved: boolean }) {
   const when = new Date(at);
   if (Number.isNaN(when.getTime())) return null;
   return (
@@ -340,7 +333,8 @@ function RecordedOn({ at }: { at: string }) {
         pointerEvents: "none",
       }}
     >
-      נפתר ב־{when.toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })}
+      {solved ? "נפתר ב־" : "עודכן לאחרונה ב־"}
+      {when.toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })}
     </p>
   );
 }

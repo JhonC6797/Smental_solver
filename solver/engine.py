@@ -70,7 +70,7 @@ class SemantleEngine:
                 return
 
         if not self.scored_similarities:
-            yield events.Failed(reason="no anchor word returned a usable score")
+            yield self._failed("no anchor word returned a usable score")
             return
 
         for event in self._search():
@@ -81,7 +81,7 @@ class SemantleEngine:
                 yield self._solved(started)
                 return
 
-        yield events.Failed(reason="ran out of attempts before reaching 100%")
+        yield self._failed("ran out of attempts before reaching 100%")
 
     def _is_solved(self) -> bool:
         return self.best_similarity >= _SOLVED_SIMILARITY
@@ -91,6 +91,13 @@ class SemantleEngine:
             word=self.best_word,
             total_guesses=self.guess_number,
             elapsed_seconds=time.monotonic() - started,
+        )
+
+    def _failed(self, reason: str) -> events.Failed:
+        return events.Failed(
+            reason=reason,
+            best_word=self.best_word,
+            best_similarity=self.best_similarity,
         )
 
     def _probe_anchors(self) -> Iterator[events.Event]:
@@ -111,7 +118,7 @@ class SemantleEngine:
             scores, target, scalars = self._score_candidates()
             index = self._pick_candidate(scores)
             if index is None:
-                yield events.Failed(reason="no unused candidate words remain")
+                yield self._failed("no unused candidate words remain")
                 return
 
             yield self._diagnostics(scores, target, scalars)
@@ -120,7 +127,7 @@ class SemantleEngine:
             if guess is None:
                 consecutive_failures += 1
                 if consecutive_failures >= config.MAX_CONSECUTIVE_FAILURES:
-                    yield events.Failed(reason="the Semantle API kept failing")
+                    yield self._failed("the Semantle API kept failing")
                     return
                 continue
 

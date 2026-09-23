@@ -40,6 +40,17 @@ def test_solved_and_failed_are_tagged(projection):
     assert serialize(events.Failed("gave up"), projection)["type"] == "failed"
 
 
+def test_a_failed_run_carries_its_best_candidate(projection):
+    """The board can offer the best guess it found instead of showing
+    nothing, so giving up must not drop that information."""
+    message = serialize(
+        events.Failed("ran out of attempts", best_word="כלב", best_similarity=74.2),
+        projection,
+    )
+    assert message["best_word"] == "כלב"
+    assert message["best_similarity"] == 74.2
+
+
 def test_diagnostics_directions_are_projected_to_three_numbers(projection):
     event = events.Diagnostics(
         guess_number=4,
