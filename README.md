@@ -1,5 +1,7 @@
 # Semantle Hebrew Solver (סמענטל)
 
+project diagram - https://gitdiagram.com/jhonc6797/smental_solver
+
 Deployment - https://smental-solver.vercel.app/
 
 אלגוריתם אוטומטי לפתרון המשחק היומי **סמענטל** בעברית באמצעות מודל וקטורים סמנטיים (FastText), מנוע צירוף ליניארי ממושקל (Vector Gravity) ומנגנון דחייה אקטיבי (Active Repulsion).
